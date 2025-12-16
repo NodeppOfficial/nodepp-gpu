@@ -23,8 +23,9 @@
 /*────────────────────────────────────────────────────────────────────────────*/
 
 namespace RL {
-#include "raylib.h"
-#include "raygl.h"
+#include <raylib/raylib.h>
+#include <raylib/raymath.h>
+#include <raylib/raygl.h>
 }
 
 namespace RL { RenderTexture2D LoadRenderTexture( int width, int height, int format ) {
@@ -64,14 +65,20 @@ namespace RL { RenderTexture2D LoadRenderTexture( int width, int height, int for
 
 /*────────────────────────────────────────────────────────────────────────────*/
 
+#ifndef GPU_KERNEL
 #define GPU_KERNEL(...) #__VA_ARGS__
+#endif
 
+#if _KERNEL_ == NODEPP_KERNEL_WASM
+    #define GLSL_VERSION "#version 100\nprecision mediump float;\n"
+#else 
 #if defined(GRAPHICS_API_OPENGL_33)
     #define GLSL_VERSION "#version 330\n"
 #elif defined(GRAPHICS_API_OPENGL_21)
     #define GLSL_VERSION "#version 120\n"
 #else
-    #define GLSL_VERSION "#version 100\nprecision highp float;\n"
+    #define GLSL_VERSION "#version 100\nprecision mediump float;\n"
+#endif
 #endif
 
 /*────────────────────────────────────────────────────────────────────────────*/
@@ -150,7 +157,7 @@ protected:
     struct NODE {
         uint width, height;
         ptr_t<float> data;
-    };  ptr_t<NODE> obj;
+    };  ptr_t<NODE>  obj;
 
 public:
 
@@ -282,11 +289,8 @@ public:
     float& operator[]( ulong pos ) const noexcept { return obj->data[pos]; }
 
     uint       size  () const noexcept { return obj->data.size(); }
-
     uint       height() const noexcept { return obj->height; }
-
     uint       width () const noexcept { return obj->width;  }
-
     ptr_t<float> data() const noexcept { return obj->data;   }
 
     /*─······································································─*/
@@ -339,8 +343,7 @@ template<> struct gpu_type_id<matrix_t> { static constexpr uchar value = 0x50; }
 
 namespace nodepp { namespace gpu { string_t _kernel_=GPU_KERNEL( 
     ${0} ${1} vec4 init(){
-        vec2 uv=gl_FragCoord.xy;
-        ${2} /*---------------*/
+        vec2 uv=gl_FragCoord.xy; ${2}
     } void main(){ gl_FragColor = init(); });
 }}
 
@@ -366,15 +369,15 @@ protected:
 
     /*─······································································─*/
 
+    void set_matrix( string_t name, const ptr_t<matrix_t>& value ) const noexcept {
+         int sid = RL::GetShaderLocation( *obj->shader, name.get() );
+         SetShaderValueTexture( *obj->shader, sid, value->get() );        
+    }
+
     template< class T >
     void set_variable( string_t name, int flag, const T& value ) const noexcept {
          int sid = RL::GetShaderLocation( *obj->shader, name.get() );
          SetShaderValueV( *obj->shader, sid, &value, flag, 1 );
-    }
-
-    void set_matrix( string_t name, const matrix_t& value ) const noexcept {
-         int sid = RL::GetShaderLocation( *obj->shader, name.get() );
-         SetShaderValueTexture( *obj->shader, sid, value.get() );        
     }
 
     /*─······································································─*/
@@ -384,27 +387,27 @@ protected:
      if( !RL::IsShaderValid( *obj->shader ) ){ throw except_t("Invalid Shader"); }
     for( auto x: obj->vars.data() ){ switch( x.second.type ){
 
-        case 0x01: set_variable( x.first, VAR_BOOL , x.second.value.as<bool> ());   break;
-        case 0x02: set_variable( x.first, VAR_INT  , x.second.value.as<int>  ());   break;
-        case 0x03: set_variable( x.first, VAR_UINT , x.second.value.as<uint> ());   break;
-        case 0x04: set_variable( x.first, VAR_FLOAT, x.second.value.as<float>());   break;
+        case 0x01: set_variable( x.first, VAR_BOOL , x.second.value.as<ptr_t<bool>> ());   break;
+        case 0x02: set_variable( x.first, VAR_INT  , x.second.value.as<ptr_t<int>>  ());   break;
+        case 0x03: set_variable( x.first, VAR_UINT , x.second.value.as<ptr_t<uint>> ());   break;
+        case 0x04: set_variable( x.first, VAR_FLOAT, x.second.value.as<ptr_t<float>>());   break;
 
-        case 0x11: set_variable( x.first, VAR_BVEC2, x.second.value.as<bvec2_t>()); break;
-        case 0x12: set_variable( x.first, VAR_IVEC2, x.second.value.as<ivec2_t>()); break;
-        case 0x13: set_variable( x.first, VAR_UVEC2, x.second.value.as<uvec2_t>()); break;
-        case 0x14: set_variable( x.first, VAR_VEC2 , x.second.value.as< vec2_t>()); break;
+        case 0x11: set_variable( x.first, VAR_BVEC2, x.second.value.as<ptr_t<bvec2_t>>()); break;
+        case 0x12: set_variable( x.first, VAR_IVEC2, x.second.value.as<ptr_t<ivec2_t>>()); break;
+        case 0x13: set_variable( x.first, VAR_UVEC2, x.second.value.as<ptr_t<uvec2_t>>()); break;
+        case 0x14: set_variable( x.first, VAR_VEC2 , x.second.value.as<ptr_t<vec2_t>> ()); break;
 
-        case 0x21: set_variable( x.first, VAR_BVEC3, x.second.value.as<bvec3_t>()); break;
-        case 0x22: set_variable( x.first, VAR_IVEC3, x.second.value.as<ivec3_t>()); break;
-        case 0x23: set_variable( x.first, VAR_UVEC3, x.second.value.as<uvec3_t>()); break;
-        case 0x24: set_variable( x.first, VAR_VEC3 , x.second.value.as< vec3_t>()); break;
+        case 0x21: set_variable( x.first, VAR_BVEC3, x.second.value.as<ptr_t<bvec3_t>>()); break;
+        case 0x22: set_variable( x.first, VAR_IVEC3, x.second.value.as<ptr_t<ivec3_t>>()); break;
+        case 0x23: set_variable( x.first, VAR_UVEC3, x.second.value.as<ptr_t<uvec3_t>>()); break;
+        case 0x24: set_variable( x.first, VAR_VEC3 , x.second.value.as<ptr_t<vec3_t>> ()); break;
 
-        case 0x31: set_variable( x.first, VAR_BVEC4, x.second.value.as<bvec4_t>()); break;
-        case 0x32: set_variable( x.first, VAR_IVEC4, x.second.value.as<ivec4_t>()); break;
-        case 0x33: set_variable( x.first, VAR_UVEC4, x.second.value.as<uvec4_t>()); break;
-        case 0x34: set_variable( x.first, VAR_VEC4 , x.second.value.as< vec4_t>()); break;
+        case 0x31: set_variable( x.first, VAR_BVEC4, x.second.value.as<ptr_t<bvec4_t>>()); break;
+        case 0x32: set_variable( x.first, VAR_IVEC4, x.second.value.as<ptr_t<ivec4_t>>()); break;
+        case 0x33: set_variable( x.first, VAR_UVEC4, x.second.value.as<ptr_t<uvec4_t>>()); break;
+        case 0x34: set_variable( x.first, VAR_VEC4 , x.second.value.as<ptr_t<vec4_t>> ()); break;
 
-        case 0x50: set_matrix  ( x.first, x.second.value.as<matrix_t>() ); /*----*/ break;
+        case 0x50: set_matrix  ( x.first, x.second.value.as<ptr_t<matrix_t>>() ); /*----*/ break;
 
     }}}
 
@@ -458,7 +461,7 @@ public:
 
     gpu_t& set_output( uint width, uint height, uint format=OUT_DOUBLE4 ) noexcept {
     if( !is_closed() ){
-        if( !obj->texture.null() ){ RL::UnloadRenderTexture( *obj->texture ); }
+        if( !obj->texture.null() ) { RL::UnloadRenderTexture( *obj->texture ); }
         /**/ obj->texture =type::bind( RL::LoadRenderTexture( width, height, format ) );
     } return *this; }
 
@@ -476,7 +479,7 @@ public:
           { throw except_t("invalid variable name"); }
         
         DONE item; item.type = gpu_type_id<T>::value;
-        /*------*/ item.value= value;
+        /*------*/ item.value= type::bind( value );
         obj->vars  [ name ]  = item;
     
     return *this; }
