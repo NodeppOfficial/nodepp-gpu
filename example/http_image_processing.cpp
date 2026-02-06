@@ -67,7 +67,7 @@ void onMain(){
             args.headers = header_t({ { "Host", url::host(args.url) } });
             args.method  = "GET";
 
-    https::fetch( args, ssl )
+    https::fetch( args, &ssl )
     
     .then([=]( https_t cli ){
         auto data = stream::await( cli );
